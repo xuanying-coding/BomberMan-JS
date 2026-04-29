@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Q版泡泡堂 - 宏伟关卡设计师</title>
+    <style>
+        :root { --primary: #4ecca3; --bg: #1a1a2e; --panel: #16213e; --text: #ecf0f1; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { color: var(--primary); margin: 0; text-shadow: 0 0 10px rgba(78, 204, 163, 0.3); }
+
+        .editor-container { display: flex; gap: 20px; background: var(--panel); padding: 25px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.05); }
+        
+        .canvas-wrapper { position: relative; border: 4px solid var(--primary); border-radius: 10px; overflow: hidden; background: #232931; }
+        canvas { display: block; cursor: crosshair; image-rendering: auto; }
+
+        .toolbar { width: 260px; display: flex; flex-direction: column; gap: 15px; }
+        .tool-group { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .tool-title { font-size: 12px; text-transform: uppercase; margin-bottom: 12px; color: var(--primary); font-weight: bold; letter-spacing: 1px; }
+        
+        .tile-selector { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .tile-option { 
+            padding: 10px; background: rgba(255,255,255,0.05); border: 2px solid transparent; border-radius: 8px; 
+            cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px; transition: 0.2s;
+        }
+        .tile-option:hover { background: rgba(255,255,255,0.1); }
+        .tile-option.active { border-color: var(--primary); background: rgba(78, 204, 163, 0.15); }
+
+        /* 模拟游戏内的方块颜色 */
+        .preview-box { width: 14px; height: 14px; border-radius: 3px; }
+        .p-0 { background: #2d3e50; border: 1px solid #444; } /* 地板 */
+        .p-1 { background: #27ae60; } /* 森林墙 */
+        .p-2 { background: #e67e22; } /* 木箱 */
+
+        .input-group { display: flex; gap: 5px; margin-bottom: 10px; }
+        .input-group input { background: #0f3460; border: 1px solid var(--primary); color: white; padding: 5px; border-radius: 4px; width: 60px; }
+
+        .action-btn { 
+            padding: 12px; border: none; border-radius: 8px; cursor: pointer; 
+            font-weight: bold; color: white; transition: 0.3s; width: 100%;
+        }
+        .btn-copy { background: var(--primary); color: #1a1a2e; }
+        .btn-copy:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(78, 204, 163, 0.4); }
+        .btn-clear { background: #e94560; margin-top: 10px; }
+        
+        textarea { 
+            width: 100%; height: 150px; background: #0a0a1a; color: #4ecca3; 
+            border: 1px solid #333; padding: 12px; font-family: 'Consolas', monospace; font-size: 10px; 
+            border-radius: 8px; box-sizing: border-box; resize: none; margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>LEVEL DESIGNER</h1>
+        <p style="color: #666; font-size: 14px;">设计你的宏伟战场，然后将代码粘贴至 LEVEL_CONFIG</p>
+    </div>
+
+    <div class="editor-container">
+        <div class="canvas-wrapper">
+            <canvas id="editorCanvas"></canvas>
+        </div>
+
+        <div class="toolbar">
+            <div class="tool-group">
+                <div class="tool-title">地图尺寸 (行列)</div>
+                <div class="input-group">
+                    <input type="number" id="mapSize" value="25" min="11" max="51">
+                    <button onclick="resizeMap()" style="cursor:pointer; background:#4ecca3; border:none; border-radius:4px; padding:0 10px;">应用</button>
+                </div>
+                <div style="font-size: 11px; color: #888;">推荐使用奇数 (如 11, 15, 25, 31)</div>
+            </div>
+
+            <div class="tool-group">
+                <div class="tool-title">素材笔刷</div>
+                <div class="tile-selector" id="palette">
+                    <div class="tile-option active" data-type="0"><div class="preview-box p-0"></div>地板</div>
+                    <div class="tile-option" data-type="1"><div class="preview-box p-1"></div>硬墙</div>
+                    <div class="tile-option" data-type="2"><div class="preview-box p-2"></div>木箱</div>
+                    <div class="tile-option" data-type="6">🌀 传送门</div>
+                    <div class="tile-option" data-type="7">➔ 传送带</div>
+                    <div class="tile-option" data-type="8">❄️ 冰面</div>
+                    <div class="tile-option" data-type="3">🔥 威力+</div>
+                    <div class="tile-option" data-type="4">💣 数量+</div>
+                </div>
+            </div>
+
+            <div class="tool-group">
+                <div class="tool-title">数据管理</div>
+                <button class="action-btn btn-copy" onclick="exportCode()">生成并复制 JSON</button>
+                <button class="action-btn btn-clear" onclick="clearMap()">重置画布</button>
+                <textarea id="outputJson" placeholder="这里会生成地图数组... 你也可以把旧代码贴在这里点击下方按钮还原"></textarea>
+                <button class="action-btn" style="background:#3498db; margin-top:5px; font-size:12px; padding:5px;" onclick="importCode()">从文本框还原地图</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('editorCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let TILE_SIZE = 24; // 编辑器内稍微小一点以便显示全貌
+        let GRID = 25;
+        let currentBrush = 0;
+        let mapData = [];
+
+        function initData() {
+            mapData = Array.from({length: GRID}, (_, r) => 
+                Array.from({length: GRID}, (_, c) => 
+                    (r===0 || r===GRID-1 || c===0 || c===GRID-1) ? 1 : 0
+                )
+            );
+            // 自动每隔一个格子放一个墙（经典模式）
+            for(let r=2; r<GRID-2; r+=2) {
+                for(let c=2; c<GRID-2; c+=2) {
+                    mapData[r][c] = 1;
+                }
+            }
+        }
+
+        function resizeMap() {
+            const val = parseInt(document.getElementById('mapSize').value);
+            if(val < 5 || val > 100) return;
+            GRID = val;
+            TILE_SIZE = Math.min(30, Math.floor(700 / GRID)); // 动态适配屏幕
+            canvas.width = GRID * TILE_SIZE;
+            canvas.height = GRID * TILE_SIZE;
+            initData();
+            render();
+        }
+
+        document.getElementById('palette').addEventListener('click', (e) => {
+            const opt = e.target.closest('.tile-option');
+            if (!opt) return;
+            document.querySelectorAll('.tile-option').forEach(el => el.classList.remove('active'));
+            opt.classList.add('active');
+            currentBrush = parseInt(opt.dataset.type);
+        });
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let r = 0; r < GRID; r++) {
+                for (let c = 0; c < GRID; c++) {
+                    const x = c * TILE_SIZE;
+                    const y = r * TILE_SIZE;
+                    const type = mapData[r][c];
+
+                    // 1. 绘制地板
+                    ctx.fillStyle = "#2d3e50";
+                    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+                    // 2. 绘制元素
+                    if (type === 1) {
+                        ctx.fillStyle = "#27ae60"; // 对应森林墙色
+                        ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+                        ctx.strokeRect(x+2, y+2, TILE_SIZE-4, TILE_SIZE-4);
+                    } else if (type === 2) {
+                        ctx.fillStyle = "#e67e22"; // 对应木箱色
+                        ctx.fillRect(x+2, y+2, TILE_SIZE-4, TILE_SIZE-4);
+                    } else if (type >= 3) {
+                        const icons = {3:"🔥", 4:"💣", 6:"🌀", 7:"➔", 8:"❄️"};
+                        ctx.font = `${TILE_SIZE*0.7}px Arial`;
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+                        ctx.fillText(icons[type], x + TILE_SIZE/2, y + TILE_SIZE/2);
+                    }
+
+                    // 3. 网格辅助线
+                    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+                    ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                }
+            }
+        }
+
+        let isDrawing = false;
+        function paint(e) {
+            const rect = canvas.getBoundingClientRect();
+            const c = Math.floor((e.clientX - rect.left) / TILE_SIZE);
+            const r = Math.floor((e.clientY - rect.top) / TILE_SIZE);
+            if (r >= 0 && r < GRID && c >= 0 && c < GRID) {
+                mapData[r][c] = currentBrush;
+                render();
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => { isDrawing = true; paint(e); });
+        canvas.addEventListener('mousemove', (e) => { if(isDrawing) paint(e); });
+        window.addEventListener('mouseup', () => isDrawing = false);
+
+        function exportCode() {
+            const code = JSON.stringify(mapData);
+            document.getElementById('outputJson').value = code;
+            navigator.clipboard.writeText(code);
+            alert("地图数据已复制！去 main.js 的 LEVEL_CONFIG 中添加吧。");
+        }
+
+        function importCode() {
+            try {
+                const raw = document.getElementById('outputJson').value;
+                const data = JSON.parse(raw);
+                if(!Array.isArray(data)) throw new Error();
+                mapData = data;
+                GRID = data.length;
+                document.getElementById('mapSize').value = GRID;
+                TILE_SIZE = Math.min(30, Math.floor(700 / GRID));
+                canvas.width = GRID * TILE_SIZE;
+                canvas.height = GRID * TILE_SIZE;
+                render();
+            } catch(e) {
+                alert("导入失败：请确保文本框内是有效的数组代码。");
+            }
+        }
+
+        function clearMap() {
+            if(confirm("重置画布？")) {
+                initData();
+                render();
+            }
+        }
+
+        resizeMap(); // 初始化
+    </script>
+</body>
+</html>
